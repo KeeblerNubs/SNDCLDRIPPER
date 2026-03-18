@@ -1,18 +1,79 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="UTF-8">
-  <title>SoundCloud Ripper</title>
-  <style>
-    body { font-family: Consolas; background:#111; color:#0f0; padding:20px; }
-    #log { max-height:400px; overflow-y:auto; border:1px solid #0f0; padding:10px; }
-  </style>
-</head>
-<body>
-  <h1>SoundCloud Ripper 2026</h1>
-  <div id="log">Waiting for logic...</div>
-  <button onclick="startRip()">Start Rip</button>
+  <head>
+    <meta charset="UTF-8" />
+    <title>SoundCloud Ripper</title>
+    <style>
+      body {
+        font-family: Segoe UI, Arial, sans-serif;
+        background: #111;
+        color: #eaf7ea;
+        padding: 20px;
+      }
+      .panel {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      input {
+        flex: 1;
+        background: #1d1d1d;
+        color: #eaf7ea;
+        border: 1px solid #3b3b3b;
+        border-radius: 6px;
+        padding: 10px;
+      }
+      button {
+        background: #ff5500;
+        border: 0;
+        border-radius: 6px;
+        color: #fff;
+        padding: 10px 16px;
+        cursor: pointer;
+      }
+      #log {
+        max-height: 420px;
+        overflow-y: auto;
+        border: 1px solid #2f2f2f;
+        border-radius: 6px;
+        padding: 10px;
+        background: #0d0d0d;
+      }
+      .hint {
+        color: #a7a7a7;
+        margin: 0 0 12px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>SoundCloud Ripper (Electron)</h1>
+      <p class="hint">
+        Enter a SoundCloud playlist URL + client ID, pick a folder, then rip.
+      </p>
 
-  <script src="./renderer.js"></script>
-</body>
+      <div class="row">
+        <input id="playlistUrl" placeholder="https://soundcloud.com/.../sets/..." />
+      </div>
+      <div class="row">
+        <input id="clientId" placeholder="SoundCloud client_id" />
+      </div>
+      <div class="row">
+        <input id="outputDir" placeholder="Output folder" readonly />
+        <button id="folderBtn">Choose Folder</button>
+      </div>
+      <div class="row">
+        <button id="startBtn">Start Rip</button>
+      </div>
+
+      <div id="log">Ready.</div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
 </html>
