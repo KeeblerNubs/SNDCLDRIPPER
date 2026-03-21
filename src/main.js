@@ -6,6 +6,9 @@ const Store = require('electron-store');
 
 const store = new Store();
 
+const TRACKS_BATCH_SIZE = 50;
+const PLAYLIST_TRACK_PAGE_SIZE = 200;
+
 let mainWindow;
 
 function sanitizeFileName(name) {
@@ -39,22 +42,107 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
+function getRequestParams(clientId, extra = {}) {
+  return {
+    client_id: clientId,
+    app_version: '1735909863',
+    app_locale: 'en',
+    ...extra
+  };
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+}
+
+async function fetchTracksByIds(trackIds, clientId) {
+  const hydratedTracks = [];
+
+  const chunks = chunkArray(trackIds, TRACKS_BATCH_SIZE);
+  for (const idChunk of chunks) {
+    const response = await axios.get('https://api-v2.soundcloud.com/tracks', {
+      params: getRequestParams(clientId, { ids: idChunk.join(',') })
+    });
+
+    const tracks = Array.isArray(response.data)
+      ? response.data
+      : Array.isArray(response.data?.collection)
+        ? response.data.collection
+        : [];
+
+    hydratedTracks.push(...tracks);
+  }
+
+  return hydratedTracks;
+}
+
+async function fetchAllPlaylistTrackIds(playlistId, clientId) {
+  let nextHref = 'https://api-v2.soundcloud.com/playlists/' + playlistId + '/tracks';
+  const allTrackIds = [];
+
+  while (nextHref) {
+    const response = await axios.get(nextHref, {
+      params: getRequestParams(clientId, {
+        linked_partitioning: 1,
+        limit: PLAYLIST_TRACK_PAGE_SIZE
+      })
+    });
+
+    const collection = Array.isArray(response.data?.collection)
+      ? response.data.collection
+      : Array.isArray(response.data)
+        ? response.data
+        : [];
+
+    collection.forEach((track) => {
+      if (track?.id) {
+        allTrackIds.push(track.id);
+      }
+    });
+
+    nextHref = response.data?.next_href || null;
+  }
+
+  return allTrackIds;
+}
+
 async function resolvePlaylist({ playlistUrl, clientId }) {
   const resolved = await axios.get('https://api-v2.soundcloud.com/resolve', {
-    params: {
-      url: playlistUrl,
-      client_id: clientId,
-      app_version: '1735909863',
-      app_locale: 'en'
-    }
+    params: getRequestParams(clientId, { url: playlistUrl })
   });
 
   const data = resolved.data;
-  if (data.kind !== 'playlist' || !Array.isArray(data.tracks)) {
+  if (data.kind !== 'playlist' || !data.id) {
     throw new Error('The provided URL is not a playlist SoundCloud can resolve.');
   }
 
   return data;
+}
+
+async function collectPlaylistTracks(playlist, clientId) {
+  const seedTrackIds = (playlist.tracks || [])
+    .map((track) => track?.id)
+    .filter(Boolean);
+
+  const completeTrackIds = await fetchAllPlaylistTrackIds(playlist.id, clientId);
+  const orderedUniqueTrackIds = [...new Set(completeTrackIds.length ? completeTrackIds : seedTrackIds)];
+
+  if (!orderedUniqueTrackIds.length) {
+    throw new Error('No tracks found in this playlist.');
+  }
+
+  const hydratedTracks = await fetchTracksByIds(orderedUniqueTrackIds, clientId);
+  const trackById = new Map(hydratedTracks.map((track) => [track.id, track]));
+
+  return orderedUniqueTrackIds
+    .map((trackId) => trackById.get(trackId))
+    .filter(Boolean);
 }
 
 async function getDownloadableStreamUrl(track, clientId) {
@@ -72,7 +160,7 @@ async function getDownloadableStreamUrl(track, clientId) {
   }
 
   const streamResponse = await axios.get(candidate.url, {
-    params: { client_id: clientId }
+    params: getRequestParams(clientId)
   });
 
   return streamResponse.data?.url || null;
@@ -135,15 +223,16 @@ ipcMain.handle('rip-playlist', async (_event, payload) => {
   }
 
   const playlist = await resolvePlaylist({ playlistUrl, clientId });
+  const playlistTracks = await collectPlaylistTracks(playlist, clientId);
 
   const results = [];
-  for (let i = 0; i < playlist.tracks.length; i += 1) {
-    const track = playlist.tracks[i];
+  for (let i = 0; i < playlistTracks.length; i += 1) {
+    const track = playlistTracks[i];
     try {
       const result = await downloadTrack({
         track,
         index: i,
-        total: playlist.tracks.length,
+        total: playlistTracks.length,
         outputDir,
         clientId
       });
@@ -159,7 +248,7 @@ ipcMain.handle('rip-playlist', async (_event, payload) => {
 
   return {
     playlistTitle: playlist.title,
-    totalTracks: playlist.tracks.length,
+    totalTracks: playlistTracks.length,
     downloaded: results.filter((r) => r.ok).length,
     failed: results.filter((r) => !r.ok).length,
     results
