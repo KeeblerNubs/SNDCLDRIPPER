@@ -10,6 +10,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "echo \"No lint yet\"",
+    "test": "echo \"No tests yet\"",
     "make:win": "electron-forge make --platform=win32",
     "release:win": "powershell -ExecutionPolicy Bypass -File ./scripts/release-win.ps1",
     "release:winnpm": "npm run release:win"
